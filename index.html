@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stellar Horizons — Black Hole Interactive Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing:border-box;margin:0;padding:0; }
+    :root {
+      --void:#010308; --deep:#04060f; --nebula:#0a0e1a;
+      --cyan:#00d4ff; --warm:#e8c97a; --orange:#e8934a;
+      --text:#c8d8f0; --dim:#5a7090; --ghost:#1e2a3a;
+      --mono:'Space Mono',monospace; --tech:'Share Tech Mono',monospace; --serif:'Cormorant Garamond',serif;
+    }
+    html { scroll-behavior:smooth; }
+    body { background:var(--void);color:var(--text);font-family:var(--mono);overflow-x:hidden;cursor:none; }
+    @media (pointer:coarse) { body{cursor:auto;} #cursor,#cursor-ring{display:none;} }
+
+    #cursor { width:8px;height:8px;background:var(--cyan);border-radius:50%;position:fixed;pointer-events:none;z-index:9999;transition:transform 0.1s;mix-blend-mode:screen; }
+    #cursor-ring { width:32px;height:32px;border:1px solid rgba(0,212,255,0.4);border-radius:50%;position:fixed;pointer-events:none;z-index:9998;transition:all 0.18s cubic-bezier(0.25,0.46,0.45,0.94);mix-blend-mode:screen; }
+    #starfield { position:fixed;inset:0;z-index:0;pointer-events:none; }
+    body::before { content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:0.4;pointer-events:none;z-index:1; }
+
+    .page-wrap { position:relative;z-index:2; }
+
+    /* FALL-IN — commitment animation on BH click */
+    body.falling { animation:fallInto 1.9s cubic-bezier(0.4,0,1,1) forwards; }
+    @keyframes fallInto {
+      0%   { transform:scale(1);    filter:brightness(1) blur(0px); }
+      55%  { transform:scale(1.05); filter:brightness(0.65) blur(0.5px); }
+      100% { transform:scale(1.15); filter:brightness(0) blur(10px); }
+    }
+
+    /* NAV */
+    nav { position:fixed;top:0;left:0;right:0;z-index:100;padding:1.4rem 3rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(58,123,213,0.1);background:linear-gradient(to bottom,rgba(1,3,8,0.95),transparent);backdrop-filter:blur(4px); }
+    .nav-logo { font-family:var(--tech);font-size:0.72rem;letter-spacing:0.22em;color:var(--cyan);text-transform:uppercase; }
+    .nav-logo span { color:var(--dim); }
+    .nav-links { display:flex;gap:2.5rem;list-style:none; }
+    .nav-links a { font-family:var(--tech);font-size:0.65rem;letter-spacing:0.18em;color:var(--dim);text-decoration:none;text-transform:uppercase;transition:color 0.3s; }
+    .nav-links a:hover { color:var(--cyan); }
+    .nav-badge { font-family:var(--tech);font-size:0.55rem;letter-spacing:0.15em;color:var(--ghost);border:1px solid var(--ghost);padding:0.3rem 0.7rem;text-transform:uppercase; }
+
+    /* HERO */
+    .hero { min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:0 2rem;text-align:center; }
+
+    /* BLACK HOLE */
+    .blackhole-container { position:relative;width:460px;height:460px;margin-bottom:3rem;cursor:pointer; }
+    .bh-outer-glow { position:absolute;inset:-40px;border-radius:50%;background:radial-gradient(circle,transparent 30%,rgba(232,147,74,0.04) 50%,rgba(232,201,122,0.06) 65%,transparent 80%);filter:blur(20px);animation:outer-pulse 6s ease-in-out infinite alternate; }
+    @keyframes outer-pulse { from{opacity:0.6} to{opacity:1} }
+    .doppler-bright { position:absolute;inset:15px;border-radius:50%;background:conic-gradient(from 95deg,rgba(255,220,150,0.35) 0deg,rgba(255,130,30,0.2) 50deg,transparent 110deg,transparent 290deg,rgba(255,200,100,0.15) 360deg);animation:doppler-r 10s linear infinite;filter:blur(5px); }
+    @keyframes doppler-r { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+    .accretion-wrap { position:absolute;inset:20px;border-radius:50%;transform:perspective(800px) rotateX(72deg);overflow:visible; }
+    .disk-layer { position:absolute;border-radius:50%;border:solid transparent; }
+    .dl1{inset:0;border-width:22px;border-top-color:rgba(255,220,100,0.95);border-bottom-color:rgba(200,80,20,0.7);border-right-color:rgba(255,160,60,0.8);animation:d-spin 10s linear infinite;filter:blur(0.5px);}
+    .dl2{inset:20px;border-width:14px;border-top-color:rgba(255,140,40,0.8);border-left-color:rgba(255,200,80,0.5);animation:d-spin 16s linear infinite reverse;filter:blur(1px);}
+    .dl3{inset:36px;border-width:8px;border-top-color:rgba(255,80,10,0.6);border-right-color:rgba(255,220,140,0.4);animation:d-spin 7s linear infinite;filter:blur(1.5px);}
+    .dl4{inset:46px;border-width:5px;border-top-color:rgba(200,180,255,0.3);border-bottom-color:rgba(100,80,200,0.2);animation:d-spin 24s linear infinite reverse;}
+    .dl5{inset:52px;border-width:2px;border-top-color:rgba(255,255,255,0.2);animation:d-spin 5s linear infinite;filter:blur(1px);}
+    @keyframes d-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+    .bh-photon { position:absolute;inset:60px;border-radius:50%;border:2.5px solid rgba(255,200,100,0.25);box-shadow:0 0 20px 5px rgba(255,180,60,0.15),0 0 40px 10px rgba(255,180,60,0.08);animation:photon-p 2.5s ease-in-out infinite; }
+    @keyframes photon-p { 0%,100%{box-shadow:0 0 20px 5px rgba(255,180,60,0.15)} 50%{box-shadow:0 0 35px 10px rgba(255,200,80,0.3)} }
+    .bh-lens { position:absolute;inset:55px;border-radius:50%;background:radial-gradient(circle at 42% 44%,rgba(255,180,80,0.06) 0%,rgba(58,123,213,0.08) 40%,transparent 70%);filter:blur(6px);animation:lens-drift 9s ease-in-out infinite alternate; }
+    @keyframes lens-drift { from{transform:translate(-4px,-3px)} to{transform:translate(4px,3px)} }
+    .singularity { position:absolute;inset:75px;border-radius:50%;background:radial-gradient(circle at center,#000 0%,#000 60%,rgba(0,0,5,0.97) 80%,transparent 100%);box-shadow:0 0 100px 50px rgba(0,0,0,1),0 0 200px 100px rgba(0,0,0,0.9),0 0 300px 150px rgba(0,0,0,0.5); }
+    .shadow-cast { position:absolute;inset:60px;border-radius:50%;background:radial-gradient(circle,#000 0%,#000 55%,transparent 80%);transform:perspective(800px) rotateX(72deg) translateY(8px) scaleY(1.3);opacity:0.95; }
+    .lens-arc { position:absolute;border-radius:50%;border:1px solid transparent; }
+    .la1{inset:-18px;border-top-color:rgba(255,200,100,0.07);animation:arc-r 22s linear infinite;}
+    .la2{inset:-35px;border-bottom-color:rgba(0,212,255,0.04);animation:arc-r 32s linear infinite reverse;}
+    @keyframes arc-r { from{transform:rotate(0)scale(1)} to{transform:rotate(360deg)scale(1.04)} }
+    .grav-particle { position:absolute;border-radius:50%;animation:gp-fall var(--d) linear infinite;opacity:0; }
+    @keyframes gp-fall { 0%{transform:translate(var(--sx),var(--sy)) scale(1.5);opacity:0.9;} 70%{opacity:0.4;} 100%{transform:translate(0,0) scale(0);opacity:0;} }
+    .bh-click-hint { position:absolute;bottom:-40px;left:50%;transform:translateX(-50%);font-family:var(--tech);font-size:0.48rem;letter-spacing:0.22em;color:var(--ghost);text-transform:uppercase;white-space:nowrap;opacity:0;animation:fade-up 1s ease forwards 3.5s; }
+
+    /* HERO TEXT */
+    .hero-eyebrow { font-family:var(--tech);font-size:0.62rem;letter-spacing:0.3em;color:var(--cyan);text-transform:uppercase;margin-bottom:1.2rem;opacity:0;animation:fade-up 0.8s ease forwards 0.3s; }
+    .hero-title { font-family:var(--serif);font-size:clamp(2.8rem,5vw,4.5rem);font-weight:300;line-height:1.1;color:#e8f0ff;margin-bottom:1rem;opacity:0;animation:fade-up 0.9s ease forwards 0.5s; }
+    .hero-title em { font-style:italic;color:var(--warm); }
+    .hero-sub { font-family:var(--tech);font-size:0.65rem;letter-spacing:0.15em;color:var(--dim);max-width:500px;line-height:1.9;margin-bottom:2.8rem;opacity:0;animation:fade-up 0.9s ease forwards 0.7s; }
+    @keyframes fade-up { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+    .cta-group { display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;opacity:0;animation:fade-up 0.9s ease forwards 0.9s; }
+    .btn-primary { font-family:var(--tech);font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;color:var(--void);background:var(--cyan);padding:1rem 2.2rem;position:relative;overflow:hidden;transition:all 0.3s;display:inline-block;cursor:none; }
+    .btn-primary::before { content:'';position:absolute;inset:0;background:white;transform:translateX(-105%);transition:transform 0.4s cubic-bezier(0.77,0,0.175,1); }
+    .btn-primary:hover::before { transform:translateX(0); }
+    .btn-primary span { position:relative;z-index:1; }
+    .btn-secondary { font-family:var(--tech);font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;color:var(--dim);border:1px solid var(--ghost);padding:1rem 2.2rem;transition:all 0.3s;display:inline-block;cursor:none; }
+    .btn-secondary:hover { color:var(--cyan);border-color:rgba(0,212,255,0.4);background:rgba(0,212,255,0.04); }
+    .scroll-hint { position:absolute;bottom:2.5rem;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:0.5rem;opacity:0;animation:fade-up 1s ease forwards 1.4s; }
+    .scroll-hint span { font-family:var(--tech);font-size:0.5rem;letter-spacing:0.25em;color:var(--ghost);text-transform:uppercase; }
+    .scroll-line { width:1px;height:40px;background:linear-gradient(to bottom,rgba(0,212,255,0.5),transparent);animation:scroll-drop 2s ease-in-out infinite; }
+    @keyframes scroll-drop { 0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform:scaleY(1);transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom} }
+
+    /* TICKER */
+    .ticker-wrap { overflow:hidden;border-top:1px solid rgba(58,123,213,0.08);border-bottom:1px solid rgba(58,123,213,0.08);padding:0.8rem 0;background:rgba(4,6,15,0.8); }
+    .ticker-track { display:flex;animation:ticker-scroll 50s linear infinite;white-space:nowrap; }
+    .ticker-item { font-family:var(--tech);font-size:0.5rem;letter-spacing:0.15em;color:var(--ghost);padding:0 3rem;text-transform:uppercase; }
+    .ticker-item span { color:var(--cyan);margin-right:0.5rem; }
+    .ticker-item.glitch-tick { color:rgba(0,212,255,0.3);animation:tick-flicker 0.3s steps(2) 1; }
+    @keyframes tick-flicker { 0%{opacity:1}50%{opacity:0}100%{opacity:1} }
+    @keyframes ticker-scroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+
+    /* STATS */
+    .stats-bar { border-top:1px solid rgba(58,123,213,0.12);border-bottom:1px solid rgba(58,123,213,0.12);padding:1.8rem 0;display:grid;grid-template-columns:repeat(4,1fr);text-align:center; }
+    .stat-item { padding:0 2rem;border-right:1px solid rgba(58,123,213,0.08); }
+    .stat-item:last-child { border-right:none; }
+    .stat-value { font-family:var(--serif);font-size:2rem;font-weight:300;color:var(--warm);display:block;transition:color 0.2s; }
+    .stat-label { font-family:var(--tech);font-size:0.5rem;letter-spacing:0.2em;color:var(--dim);text-transform:uppercase;margin-top:0.3rem;display:block;transition:color 0.2s; }
+    .stat-item.glitched .stat-value { color:rgba(0,212,255,0.55);animation:sg 0.2s steps(3) 1; }
+    .stat-item.glitched .stat-label { color:rgba(0,212,255,0.3); }
+    @keyframes sg { 0%{transform:translate(0)}33%{transform:translate(-2px,1px)}66%{transform:translate(2px,-1px)}100%{transform:translate(0)} }
+
+    /* SECTIONS */
+    .section { max-width:1100px;margin:0 auto;padding:8rem 3rem; }
+    .section-tag { font-family:var(--tech);font-size:0.55rem;letter-spacing:0.3em;color:var(--cyan);text-transform:uppercase;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem; }
+    .section-tag::after { content:'';flex:1;height:1px;background:linear-gradient(to right,rgba(0,212,255,0.3),transparent);max-width:120px; }
+    .section-title { font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);font-weight:300;line-height:1.2;color:#e8f0ff;margin-bottom:1.5rem; }
+    .section-body { font-family:var(--tech);font-size:0.62rem;line-height:2.2;color:var(--dim);max-width:680px; }
+    .section-body p { margin-bottom:1rem; }
+
+    /* HIDDEN LETTERS — no tooltips, proximity-only glow */
+    .hl {
+      opacity:0.8;cursor:default;position:relative;
+      transition:opacity 0.3s, filter 0.3s, color 0.3s;
+      display:inline-block;
+    }
+    .hl.near { opacity:1; filter:drop-shadow(0 0 6px rgba(0,212,255,0.55)); color:var(--text); }
+    .hl.lit  { color:#f0abfc; filter:drop-shadow(0 0 10px rgba(240,171,252,0.7)); opacity:1; }
+
+    /* SIGNAL DETECTED OVERLAY — redirects to explore.html?signal=found */
+    #signal-overlay { display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.97);flex-direction:column;align-items:center;justify-content:center; }
+    #signal-overlay.on { display:flex; }
+    .sig-terminal { font-family:var(--tech);font-size:0.65rem;letter-spacing:0.2em;color:rgba(0,212,255,0.7);text-transform:uppercase;text-align:left;width:380px;line-height:2.8; }
+    .sig-line { opacity:0;transition:opacity 0.4s ease; }
+    .sig-line.on { opacity:1; }
+    .sig-cursor { display:inline-block;width:8px;height:1em;background:rgba(0,212,255,0.7);animation:blink 0.7s step-end infinite;vertical-align:text-bottom;margin-left:2px; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+
+    /* DATA PANEL */
+    .two-col { display:grid;grid-template-columns:1fr 1fr;gap:4rem;margin-top:5rem;align-items:start; }
+    .data-panel { border:1px solid rgba(58,123,213,0.15);padding:2rem;position:relative;background:linear-gradient(135deg,rgba(10,14,26,0.8),rgba(4,6,15,0.8)); }
+    .data-panel::before { content:'';position:absolute;top:-1px;left:20px;right:20px;height:1px;background:linear-gradient(to right,transparent,var(--cyan),transparent); }
+    .data-row { display:flex;justify-content:space-between;align-items:baseline;padding:0.7rem 0;border-bottom:1px solid rgba(58,123,213,0.06); }
+    .data-row:last-child { border-bottom:none; }
+    .data-key { font-family:var(--tech);font-size:0.55rem;letter-spacing:0.15em;color:var(--dim);text-transform:uppercase; }
+    .data-val { font-family:var(--mono);font-size:0.65rem;color:var(--warm);transition:color 0.15s; }
+    .data-val.glitch-personal { animation:pf 0.15s steps(2) 1; }
+    @keyframes pf { 0%{color:var(--warm)}50%{color:rgba(0,212,255,0.8)}100%{color:var(--warm)} }
+    .panel-title { font-family:var(--tech);font-size:0.55rem;letter-spacing:0.2em;color:var(--cyan);text-transform:uppercase;margin-bottom:1.2rem;padding-bottom:0.8rem;border-bottom:1px solid rgba(0,212,255,0.1); }
+
+    /* CARDS */
+    .cards-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:1.5px;margin-top:4rem;background:rgba(58,123,213,0.08); }
+    .card { background:var(--deep);padding:2.5rem 2rem;position:relative;overflow:hidden;cursor:none;transition:background 0.3s; }
+    .card:hover { background:var(--nebula); }
+    .card::before { content:'';position:absolute;top:0;left:0;width:2px;height:0;background:var(--cyan);transition:height 0.4s; }
+    .card:hover::before { height:100%; }
+    .card-icon { font-size:1.5rem;margin-bottom:1.2rem;display:block;filter:grayscale(0.5);transition:filter 0.3s; }
+    .card:hover .card-icon { filter:grayscale(0); }
+    .card-title { font-family:var(--serif);font-size:1.1rem;font-weight:400;color:var(--text);margin-bottom:0.7rem; }
+    .card-body { font-family:var(--tech);font-size:0.55rem;line-height:2;color:var(--dim); }
+    .card-link { display:inline-block;margin-top:1.2rem;font-family:var(--tech);font-size:0.55rem;letter-spacing:0.15em;color:var(--cyan);text-decoration:none;text-transform:uppercase;opacity:0;transform:translateY(6px);transition:opacity 0.3s,transform 0.3s; }
+    .card:hover .card-link { opacity:1;transform:translateY(0); }
+    .card-jupiter { background:linear-gradient(135deg,rgba(10,8,4,0.95),rgba(20,12,4,0.95)) !important; }
+    .card-jupiter:hover { background:linear-gradient(135deg,rgba(20,12,4,0.98),rgba(30,18,6,0.98)) !important; }
+    .card-jupiter::before { background:var(--orange) !important; }
+    .card-jupiter .card-title { color:#f5e6c8; }
+    .card-jupiter .card-link { color:var(--orange); }
+    /* Faint anomaly badge — only on hover */
+    .card-jupiter::after { content:'ANOMALY DETECTED';position:absolute;top:1rem;right:1rem;font-family:var(--tech);font-size:0.38rem;letter-spacing:0.15em;color:rgba(232,147,74,0);text-transform:uppercase;transition:color 0.4s; }
+    .card-jupiter:hover::after { color:rgba(232,147,74,0.4); }
+
+    /* EXPLORE BAND */
+    .explore-band { border-top:1px solid rgba(58,123,213,0.12);border-bottom:1px solid rgba(58,123,213,0.12);padding:5rem 3rem;text-align:center;position:relative;overflow:hidden; }
+    .explore-band::before { content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(58,123,213,0.06) 0%,transparent 70%); }
+    .explore-band-title { font-family:var(--serif);font-size:clamp(1.8rem,3vw,2.6rem);font-weight:300;font-style:italic;color:#e8f0ff;margin-bottom:0.8rem;position:relative; }
+    .explore-band-sub { font-family:var(--tech);font-size:0.6rem;letter-spacing:0.2em;color:var(--dim);margin-bottom:2.5rem;position:relative; }
+
+    .cred-row { display:flex;justify-content:center;gap:4rem;flex-wrap:wrap;padding:3rem;border-top:1px solid rgba(58,123,213,0.06); }
+    .cred-item { font-family:var(--tech);font-size:0.5rem;letter-spacing:0.2em;color:var(--ghost);text-transform:uppercase; }
+    footer { padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(58,123,213,0.08); }
+    .footer-txt { font-family:var(--tech);font-size:0.5rem;letter-spacing:0.15em;color:var(--ghost); }
+
+    .reveal { opacity:0;transform:translateY(24px);transition:opacity 0.9s ease,transform 0.9s ease; }
+    .reveal.visible { opacity:1;transform:translateY(0); }
+
+    @media (max-width:768px) {
+      .two-col,.cards-grid{grid-template-columns:1fr;}
+      .stats-bar{grid-template-columns:1fr 1fr;}
+      nav{padding:1rem 1.5rem;}
+      .nav-links{display:none;}
+      .blackhole-container{width:300px;height:300px;}
+      .section{padding:4rem 1.5rem;}
+    }
+  </style>
+</head>
+<body>
+  <div id="cursor"></div>
+  <div id="cursor-ring"></div>
+  <canvas id="starfield"></canvas>
+
+  <!-- Signal terminal — fires when all 7 letters found, then redirects -->
+  <div id="signal-overlay">
+    <div class="sig-terminal">
+      <div class="sig-line" id="sl1">// anomalous signal detected</div>
+      <div class="sig-line" id="sl2">// cross-referencing source coordinates</div>
+      <div class="sig-line" id="sl3">// signal origin: unknown</div>
+      <div class="sig-line" id="sl4">// <span style="color:#f0abfc">pattern recognized.</span></div>
+      <div class="sig-line" id="sl5">// redirecting<span class="sig-cursor"></span></div>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <nav>
+      <div class="nav-logo">Stellar<span>Horizons</span> &nbsp;/&nbsp; ASTROPHYSICS PORTAL</div>
+      <ul class="nav-links">
+        <li><a href="#phenomena">Phenomena</a></li>
+        <li><a href="explore.html">Deep Dive</a></li>
+        <li><a href="jupiter.html">♃ Jupiter</a></li>
+      </ul>
+      <div class="nav-badge">V 2.4.1 &nbsp; LIVE</div>
+    </nav>
+
+    <section class="hero">
+      <div class="blackhole-container" id="bh" onclick="handleBHClick()">
+        <div class="bh-outer-glow"></div>
+        <div class="doppler-bright"></div>
+        <div class="accretion-wrap">
+          <div class="disk-layer dl1"></div><div class="disk-layer dl2"></div>
+          <div class="disk-layer dl3"></div><div class="disk-layer dl4"></div>
+          <div class="disk-layer dl5"></div>
+        </div>
+        <div class="bh-photon"></div>
+        <div class="bh-lens"></div>
+        <div class="shadow-cast"></div>
+        <div class="singularity"></div>
+        <div class="lens-arc la1"></div>
+        <div class="lens-arc la2"></div>
+        <span class="bh-click-hint">[ click to descend ]</span>
+      </div>
+
+      <p class="hero-eyebrow">Interactive Astrophysics Explorer — Est. 2024</p>
+      <h1 class="hero-title">What lies beyond the<br /><em>event horizon?</em></h1>
+      <p class="hero-sub">An interactive simulation of black hole physics. Explore gravitational lensing, Hawking radiation, and the boundary where space and time cease to exist as we know them.</p>
+      <div class="cta-group">
+        <a href="explore.html" class="btn-primary" id="explore-cta" onclick="event.preventDefault();handleBHClick()"><span>Explore Event Horizon →</span></a>
+        <a href="#phenomena" class="btn-secondary">Read the Science</a>
+      </div>
+      <div class="scroll-hint"><span>Scroll to descend</span><div class="scroll-line"></div></div>
+    </section>
+
+    <div class="ticker-wrap">
+      <div class="ticker-track" id="ticker">
+        <span class="ticker-item"><span>◈</span> Schwarzschild Radius: 3km per solar mass</span>
+        <span class="ticker-item"><span>◈</span> Time dilation at event horizon: ∞</span>
+        <span class="ticker-item"><span>◈</span> Hawking temperature: inversely proportional to mass</span>
+        <span class="ticker-item"><span>◈</span> Information paradox: unresolved</span>
+        <span class="ticker-item"><span>◈</span> Closest known black hole: 1,500 ly</span>
+        <span class="ticker-item"><span>◈</span> Spaghettification begins at tidal radius</span>
+        <span class="ticker-item"><span>◈</span> Penrose process extracts rotational energy</span>
+        <span class="ticker-item"><span>◈</span> Frame-dragging confirmed · Gravity Probe B · 2011</span>
+        <span class="ticker-item"><span>◈</span> Schwarzschild Radius: 3km per solar mass</span>
+        <span class="ticker-item"><span>◈</span> Time dilation at event horizon: ∞</span>
+        <span class="ticker-item"><span>◈</span> Hawking temperature: inversely proportional to mass</span>
+        <span class="ticker-item"><span>◈</span> Information paradox: unresolved</span>
+        <span class="ticker-item"><span>◈</span> Closest known black hole: 1,500 ly</span>
+        <span class="ticker-item"><span>◈</span> Spaghettification begins at tidal radius</span>
+        <span class="ticker-item"><span>◈</span> Penrose process extracts rotational energy</span>
+        <span class="ticker-item"><span>◈</span> Frame-dragging confirmed · Gravity Probe B · 2011</span>
+      </div>
+    </div>
+
+    <div class="stats-bar reveal">
+      <div class="stat-item" id="stat0"><span class="stat-value">M87*</span><span class="stat-label">First Imaged BH · 2019</span></div>
+      <div class="stat-item"><span class="stat-value" id="stat-mass">6.5B</span><span class="stat-label">Solar Masses · M87*</span></div>
+      <div class="stat-item" id="stat2"><span class="stat-value">99.99%</span><span class="stat-label">Speed of Light · Escape Velocity</span></div>
+      <div class="stat-item"><span class="stat-value">∞</span><span class="stat-label">Density at Singularity</span></div>
+    </div>
+
+    <!-- ABOUT — letters H-A-R-S-H-I-T hidden at paragraph starts -->
+    <section class="section" id="phenomena">
+      <div class="reveal">
+        <p class="section-tag">01 — What We Know</p>
+        <h2 class="section-title">The physics of the<br />impossible made visible</h2>
+        <div class="section-body">
+          <p><span class="hl" data-i="0" onclick="activate(0)">H</span>orizons define the limits of what is knowable. In astrophysics, the event horizon is that limit made absolute — a boundary beyond which no signal, no matter, no photon can ever return to inform us of what lies within. It is the universe's most radical form of privacy.</p>
+          <p><span class="hl" data-i="1" onclick="activate(1)">A</span>cross the observable universe, roughly one in every thousand galaxies harbors a supermassive black hole at its center — an object so gravitationally dominant that even light itself cannot escape once it crosses the boundary. M87*, six and a half billion solar masses, was the first we ever photographed.</p>
+          <p><span class="hl" data-i="2" onclick="activate(2)">R</span>elativistic time dilation near a black hole is not metaphor — it is measurable physics. A clock placed close to the event horizon ticks measurably slower than one in open space. At the horizon itself, time as we experience it simply… stops. From outside, an infalling object freezes forever at the edge.</p>
+          <p><span class="hl" data-i="3" onclick="activate(3)">S</span>pacetime is not a fixed backdrop. It is a dynamic fabric woven by mass and energy — curved, stretched, warped. Einstein's field equations describe how matter tells space how to bend, and space tells matter how to move. Every orbit, every photon path, every gravitational wave is a sentence in that language.</p>
+          <p><span class="hl" data-i="4" onclick="activate(4)">H</span>awking radiation, proposed in 1974, suggests black holes evaporate. Quantum fluctuations at the event horizon produce particle pairs — one escapes, one falls in. Over timescales that dwarf the current age of the universe, the black hole loses mass, degree by imperceptible degree, until nothing remains.</p>
+          <p><span class="hl" data-i="5" onclick="activate(5)">I</span>nside the singularity, every known law of physics unravels. Infinite density, zero volume, the collapse of all predictive models. It is not merely the end of space — it may be the end of causality itself. What happens there exists outside the reach of any equation we have ever written.</p>
+          <p><span class="hl" data-i="6" onclick="activate(6)">T</span>he Event Horizon Telescope captured the first image of a black hole's shadow in 2019 — the dark silhouette cast against the glowing infalling disk. That image, assembled from telescopes across the entire Earth, is the closest we can ever see to absolute nothingness. And it is strangely, unexpectedly beautiful.</p>
+        </div>
+      </div>
+
+      <div class="two-col reveal">
+        <div>
+          <div class="data-panel">
+            <p class="panel-title">// Object Classification · Stellar BH</p>
+            <div class="data-row"><span class="data-key">Designation</span><span class="data-val" id="dv-desig">Cygnus X-1</span></div>
+            <div class="data-row"><span class="data-key">Mass</span><span class="data-val">21.2 M☉</span></div>
+            <div class="data-row"><span class="data-key">Spin parameter</span><span class="data-val">a* > 0.983</span></div>
+            <div class="data-row"><span class="data-key">Distance</span><span class="data-val" id="dv-dist">7,200 ly</span></div>
+            <div class="data-row"><span class="data-key">Schwarzschild r</span><span class="data-val">62.7 km</span></div>
+            <div class="data-row"><span class="data-key">Accretion rate</span><span class="data-val">~2.5×10⁻⁷ M☉/yr</span></div>
+            <div class="data-row"><span class="data-key">Classification</span><span class="data-val">Kerr BH · X-ray Binary</span></div>
+          </div>
+        </div>
+        <div>
+          <p class="section-tag">02 — Classification</p>
+          <h3 class="section-title" style="font-size:1.6rem;">Kerr, Schwarzschild,<br />and beyond</h3>
+          <div class="section-body">
+            <p>Not all black holes are the same. A <strong style="color:var(--text)">Schwarzschild</strong> black hole has mass and nothing else — perfectly spherical, rotationally inert. A <strong style="color:var(--text)">Kerr</strong> black hole rotates, dragging spacetime itself in frame-dragging.</p>
+            <p>The Kerr metric introduces an <em>ergosphere</em> — a region where nothing can remain stationary. Energy can be extracted from this region via the Penrose process: the only known way to harvest a black hole's rotational energy.</p>
+            <p>Some gravitational systems exhibit persistent orbital capture beyond expected decay models. What governs these anomalous binding relationships remains, for now, an open question at the edge of known physics.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="max-width:1100px;margin:0 auto;padding:0 3rem 8rem;">
+      <div class="section-tag reveal">03 — Explore the Phenomena</div>
+      <div class="cards-grid reveal">
+        <div class="card" onclick="handleBHClick()">
+          <span class="card-icon">⬛</span>
+          <h3 class="card-title">Gravitational Lensing</h3>
+          <p class="card-body">Mass curves spacetime. Light follows that curvature. Around a black hole, photons orbit endlessly — some bent back to where they began. The Einstein ring is perhaps the most beautiful consequence of relativity.</p>
+          <span class="card-link">Enter simulation →</span>
+        </div>
+        <div class="card" onclick="handleBHClick()">
+          <span class="card-icon">〰</span>
+          <h3 class="card-title">Hawking Radiation</h3>
+          <p class="card-body">Virtual particle pairs at the event horizon. One escapes, one falls in. Over aeons, the black hole loses mass — and eventually, everything. The universe does not forget what crossed its boundary.</p>
+          <span class="card-link">Explore physics →</span>
+        </div>
+        <div class="card card-jupiter" onclick="window.location.href='jupiter.html'">
+          <span class="card-icon">🪐</span>
+          <h3 class="card-title">Jupiter & Gravity</h3>
+          <p class="card-body">The solar system's largest planet. Its gravitational field shapes everything around it. Some gravitational systems exhibit persistent orbital capture beyond expected decay models. The mechanism is not fully understood.</p>
+          <a href="jupiter.html" class="card-link">Explore section →</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="explore-band reveal">
+      <h2 class="explore-band-title">"No event in the universe is more absolute<br />than crossing an event horizon."</h2>
+      <p class="explore-band-sub">— Kip Thorne, Theoretical Physicist</p>
+      <a href="explore.html" class="btn-primary" onclick="event.preventDefault();handleBHClick()"><span>Begin the Descent →</span></a>
+    </div>
+
+    <div class="cred-row">
+      <span class="cred-item">Built on open astrophysics data</span>
+      <span class="cred-item">Simulation Physics v2.4</span>
+      <span class="cred-item">EHT Collaboration · 2019</span>
+      <span class="cred-item">Hawking, 1974 · Penrose, 1965</span>
+    </div>
+
+    <footer>
+      <div class="footer-txt">© 2024 StellarHorizons — Interactive Astrophysics · All observations approximate</div>
+      <div class="footer-txt">17h 45m 40s, −29° 0' 28" &nbsp;·&nbsp; <span style="color:rgba(58,123,213,0.15)">// for H.</span></div>
+    </footer>
+    <!-- Page path hint -->
+    <div style="position:fixed;bottom:1.2rem;right:1.5rem;z-index:100;font-family:'Share Tech Mono',monospace;font-size:0.42rem;letter-spacing:0.15em;color:rgba(58,123,213,0.2);text-transform:uppercase;pointer-events:none;">
+      <span style="color:rgba(0,212,255,0.35)">index</span> → explore → jupiter
+    </div>
+  </div>
+
+  <script>
+    // ── CURSOR ──
+    const cur = document.getElementById('cursor'), cring = document.getElementById('cursor-ring');
+    let mx=0,my=0,rx=0,ry=0;
+    document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; cur.style.left=mx-4+'px'; cur.style.top=my-4+'px'; proximityCheck(mx,my); });
+    (function animR(){rx+=(mx-rx)*0.12;ry+=(my-ry)*0.12;cring.style.left=rx-16+'px';cring.style.top=ry-16+'px';requestAnimationFrame(animR);})();
+    document.querySelectorAll('a,button,.card,.blackhole-container').forEach(el=>{
+      el.addEventListener('mouseenter',()=>{cur.style.transform='scale(2.5)';cring.style.transform='scale(1.5)';cring.style.borderColor='rgba(0,212,255,0.7)';});
+      el.addEventListener('mouseleave',()=>{cur.style.transform='scale(1)';cring.style.transform='scale(1)';cring.style.borderColor='rgba(0,212,255,0.4)';});
+    });
+
+    // ── STARFIELD ──
+    const canvas=document.getElementById('starfield'), ctx=canvas.getContext('2d');
+    let W,H,stars=[],smx=0,smy=0;
+    function initCanvas(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+    function initStars(){
+      stars=[];
+      for(let i=0;i<Math.floor((W*H)/5500);i++)
+        stars.push({x:Math.random()*W,y:Math.random()*H,z:Math.random(),r:Math.random()*1.4+0.2,tw:Math.random()*Math.PI*2,tsp:Math.random()*0.008+0.002,dx:0,dy:0});
+    }
+    document.addEventListener('mousemove',e=>{smx=e.clientX;smy=e.clientY;});
+    function drawStars(){
+      ctx.clearRect(0,0,W,H);
+      stars.forEach(s=>{
+        s.tw+=s.tsp;
+        const bright=0.55+0.45*Math.sin(s.tw);
+        if(s.z>0.6){const ddx=smx-s.x,ddy=smy-s.y,dd=Math.sqrt(ddx*ddx+ddy*ddy);if(dd<200){s.dx+=ddx*.00006;s.dy+=ddy*.00006;}}
+        s.dx*=0.97;s.dy*=0.97;
+        const px=(s.x+s.dx+W)%W,py=(s.y+s.dy+H)%H;
+        ctx.beginPath();ctx.arc(px,py,s.r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(${200+s.z*55},${210+s.z*45},255,${bright*(0.3+s.z*0.7)})`;ctx.fill();
+      });
+      requestAnimationFrame(drawStars);
+    }
+    window.addEventListener('resize',()=>{initCanvas();initStars();});
+    initCanvas();initStars();drawStars();
+
+    // ── GRAVITATIONAL PARTICLES ──
+    const bhEl=document.getElementById('bh');
+    const pColors=['#ffd080','#ff9040','#ffffff','#ff6020','#ffb050'];
+    function spawnP(){
+      if(document.body.classList.contains('falling'))return;
+      const p=document.createElement('div');p.className='grav-particle';
+      const a=Math.random()*Math.PI*2,r=175+Math.random()*55;
+      p.style.setProperty('--sx',Math.cos(a)*r+'px');p.style.setProperty('--sy',Math.sin(a)*r+'px');
+      p.style.setProperty('--d',(1.8+Math.random()*2.2)+'s');
+      p.style.left='50%';p.style.top='50%';
+      p.style.background=pColors[Math.floor(Math.random()*pColors.length)];
+      const sz=(Math.random()*2.5+0.8)+'px';p.style.width=sz;p.style.height=sz;
+      bhEl.appendChild(p);setTimeout(()=>p.remove(),5000);
+    }
+    setInterval(spawnP,380);
+
+    // ── BH PARALLAX ──
+    const bhC=document.querySelector('.blackhole-container');
+    document.addEventListener('mousemove',e=>{
+      const cx=window.innerWidth/2,cy=window.innerHeight/2;
+      bhC.style.transform=`translate(${(e.clientX-cx)/cx*14}px,${(e.clientY-cy)/cy*9}px)`;
+    });
+
+    // ── FALL-IN CLICK ── Commitment moment: no instant redirect
+    let falling=false;
+    function handleBHClick(){
+      if(falling)return; falling=true;
+      document.body.classList.add('falling');
+      setTimeout(()=>{ window.location.href='explore.html'; },1850);
+    }
+
+    // ── PROXIMITY CHECK FOR .hl LETTERS (no tooltips) ──
+    const hlEls=document.querySelectorAll('.hl');
+    function proximityCheck(mx,my){
+      hlEls.forEach(el=>{
+        if(el.classList.contains('lit'))return;
+        const r=el.getBoundingClientRect();
+        const d=Math.sqrt((mx-(r.left+r.width/2))**2+(my-(r.top+r.height/2))**2);
+        el.classList.toggle('near',d<65);
+      });
+    }
+
+    // ── HIDDEN NAME (H-A-R-S-H-I-T) — signal overlay on completion ──
+    const clicked=new Set();
+    function activate(idx){
+      const el=document.querySelector(`[data-i="${idx}"]`);
+      if(!el||clicked.has(idx))return;
+      el.classList.remove('near');el.classList.add('lit');
+      clicked.add(idx);
+      if(clicked.size===7) setTimeout(showSignal,300);
+    }
+    function showSignal(){
+      const ov=document.getElementById('signal-overlay');
+      ov.classList.add('on');
+      ['sl1','sl2','sl3','sl4','sl5'].forEach((id,i)=>
+        setTimeout(()=>document.getElementById(id).classList.add('on'),i*520)
+      );
+      setTimeout(()=>{ window.location.href='explore.html?signal=found'; },5*520+1400);
+    }
+
+    // ── SPARSE GLITCH PHASE — fires 40–70s in, then every ~60s ──
+    // Data fields briefly flicker to something wrong.
+    function doGlitch(){
+      // data panel flicker
+      const pairs=[
+        {id:'dv-dist',  orig:'7,200 ly',   ghost:'distance: irrelevant'},
+        {id:'dv-desig', orig:'Cygnus X-1', ghost:'// signal: personal'},
+      ];
+      const p=pairs[Math.floor(Math.random()*pairs.length)];
+      const el=document.getElementById(p.id);
+      if(el){el.textContent=p.ghost;el.classList.add('glitch-personal');setTimeout(()=>{el.textContent=p.orig;el.classList.remove('glitch-personal');},850);}
+
+      // stat flicker 1.5s later
+      setTimeout(()=>{
+        const statPs=[
+          {id:'stat0',sv:'M87*',sl:'First Imaged BH · 2019',gv:'???',gl:'origin unknown'},
+          {id:'stat2',sv:'99.99%',sl:'Speed of Light · Escape Velocity',gv:'∞',gl:'no escape'},
+        ];
+        const sp=statPs[Math.floor(Math.random()*statPs.length)];
+        const sEl=document.getElementById(sp.id);
+        if(!sEl)return;
+        const vEl=sEl.querySelector('.stat-value'),lEl=sEl.querySelector('.stat-label');
+        vEl.textContent=sp.gv;lEl.textContent=sp.gl;sEl.classList.add('glitched');
+        setTimeout(()=>{vEl.textContent=sp.sv;lEl.textContent=sp.sl;sEl.classList.remove('glitched');},800);
+      },1500);
+
+      // ticker glitch item 3s later
+      setTimeout(()=>{
+        const msgs=['no photon can escape — except — except —','// something in here does not fit','distance to origin: unmeasurable'];
+        const t=document.getElementById('ticker');
+        if(!t)return;
+        const span=document.createElement('span');
+        span.className='ticker-item glitch-tick';
+        span.innerHTML=`<span>⚠</span> ${msgs[Math.floor(Math.random()*msgs.length)]}`;
+        t.appendChild(span);setTimeout(()=>span.remove(),14000);
+      },3000);
+
+      setTimeout(doGlitch,55000+Math.random()*45000);
+    }
+    setTimeout(doGlitch,40000+Math.random()*30000);
+
+    // ── REVEAL OBSERVER ──
+    document.querySelectorAll('.reveal').forEach(el=>{
+      new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting)x.target.classList.add('visible');});},{threshold:0.12}).observe(el);
+    });
+
+    // ── STAT COUNT-UP ──
+    new IntersectionObserver(e=>{
+      if(e[0].isIntersecting){const el=document.getElementById('stat-mass');let c=0;const iv=setInterval(()=>{c+=0.07;if(c>=6.5){c=6.5;clearInterval(iv);}el.textContent=c.toFixed(1)+'B';},28);}
+    },{threshold:0.5}).observe(document.querySelector('.stats-bar'));
+  </script>
+</body>
+</html>
